@@ -19,9 +19,12 @@ import (
 const dbUri = "mongodb://localhost:27017"
 const maxTracks = 10
 const waitTime = 5
+
+//const streamUrl = "rtsp://rtsp.stream/pattern"
+
 const streamUrl = "rtsp://localhost:8554/mystream"
 
-func test() {
+func main() {
 	var ctx context.Context
 	var cancel context.CancelFunc
 	const maxNTP = math.MaxInt64
@@ -45,8 +48,6 @@ func test() {
 
 	log.Println("Successfully connected and pinged database.")
 	collection := client.Database("testing").Collection("packets")
-	//ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-	//defer cancel()
 
 	var signals [maxTracks]uint32
 	for index, _ := range signals {
@@ -73,11 +74,11 @@ func test() {
 		}
 	}
 
-	c.OnPacketRTP = func(trackID int, pkt *rtp.Packet) {
+	c.OnPacketRTP = func(ctx *gortsplib.ClientOnPacketRTPCtx) {
 
-		Swap := atomic.CompareAndSwapUint32(&signals[trackID], 1, 0)
+		Swap := atomic.CompareAndSwapUint32(&signals[ctx.TrackID], 1, 0)
 		if Swap {
-			writePacket(trackID, pkt, collection)
+			writePacket(ctx.TrackID, ctx.Packet, collection)
 		}
 
 	}
@@ -90,12 +91,16 @@ func test() {
 
 	log.Println("Starting service...")
 
+	//panic(c.Wait())
+
+	// TODO: make a separate goroutine
 	for {
 		for index, _ := range signals {
 			atomic.StoreUint32(&signals[index], 1)
 		}
 		time.Sleep(waitTime * time.Second)
 	}
+
 }
 
 func writePacket(trackID int, pkt *rtp.Packet, collection *mongo.Collection) {
